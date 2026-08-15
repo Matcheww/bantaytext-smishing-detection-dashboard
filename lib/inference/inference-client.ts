@@ -40,7 +40,7 @@ export async function callInferenceService(request: PredictRequest): Promise<Pre
   try {
     response = await fetch(`${baseUrl.replace(/\/$/, "")}/predict`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: buildInferenceHeaders(),
       body: JSON.stringify(request),
       // Model inference (especially mBERT) can be slow; give it room.
       signal: AbortSignal.timeout(30_000),
@@ -76,6 +76,7 @@ export async function getTfidfVocabularyStats(): Promise<TfidfVocabularyStats | 
   try {
     const response = await fetch(`${baseUrl.replace(/\/$/, "")}/models/tfidf-nb/vocabulary`, {
       method: "GET",
+      headers: buildInferenceHeaders(),
       cache: "no-store",
       signal: AbortSignal.timeout(10_000),
     });
@@ -84,4 +85,22 @@ export async function getTfidfVocabularyStats(): Promise<TfidfVocabularyStats | 
   } catch {
     return null;
   }
+}
+
+/**
+ * Shared-secret header sent on every request to the inference service.
+ * Cheap defense-in-depth: if the inference service is ever reachable
+ * beyond localhost (misconfigured firewall, moved to a shared network,
+ * etc.), this stops it from serving arbitrary callers who don't know the
+ * secret. Only applied when INFERENCE_SERVICE_SECRET is actually set —
+ * unset by default so local dev works without extra configuration; the
+ * FastAPI side mirrors this (see inference-service/app/main.py).
+ */
+function buildInferenceHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const secret = process.env.INFERENCE_SERVICE_SECRET;
+  if (secret) {
+    headers["X-Inference-Secret"] = secret;
+  }
+  return headers;
 }
